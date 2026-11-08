@@ -1,0 +1,18 @@
+# The Go bindings of the conformance fixtures, messages and service stubs,
+# for this module's tests only, into internal/conformancepb, from the
+# fixtures' descriptor set the module ships in testdata/conformance. The
+# fixtures import the annotations, whose module names their bindings.
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      path: conformance
+      value: github.com/sensive-ai/sensive-go/grpc/internal/conformancepb
+plugins:
+  - local: protoc-gen-go
+    out: internal/conformancepb
+    opt: paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: internal/conformancepb
+    opt: paths=source_relative

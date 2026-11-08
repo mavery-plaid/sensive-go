@@ -1,0 +1,157 @@
+// Copyright 2026 Sensive, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// The Dynamic Access Checker's API: its services and the messages they take
+// and answer with.
+
+syntax = "proto3";
+
+// Real-time access control API for Sensive.
+//
+// The Dynamic Access Checker evaluates access requests against the
+// organization's policies to decide whether a principal is allowed or denied
+// access to protected resources, and validates the justification tokens
+// requests carry.
+//
+// Applications integrate through an SDK (recommended) or call the API
+// directly.
+package dynax.access.v1;
+
+import "sensive/taxonomy/v1/taxonomy.proto";
+
+option go_package = "github.com/sensive-ai/sensive-go/client/gen/dynax/access/v1;accessv1";
+
+// Real-time access control decisions
+service AuthorizationService {
+  // Evaluates whether a principal should be allowed or denied one operation
+  // of one application, described in the data taxonomy
+  // (sensive.taxonomy.v1), against the organization's policy. The checker
+  // verifies the justification token, evaluates the request once per action
+  // type (any deny wins), records the decision in the access log, and mints
+  // a signed decision token.
+  rpc CheckAccess(AccessCheckRequest) returns (AccessCheckResponse);
+}
+
+// One operation of one application, in the vocabulary of the data taxonomy:
+// the join keys (`application`, `operation`), what the operation does with
+// data (the capability descriptors — true of the application whoever uses
+// it, so the catalog can establish them once), how this organization uses
+// the application (the usage descriptors), and the specific owner and
+// resource when the request identifies one.
+message AccessCheckRequest {
+  Principal principal = 1;
+
+  // The application the operation belongs to: a catalog name for a proxied
+  // app (`aws-secretsmanager`), the customer's own name for an SDK app
+  // (`yobank-support-api`). Scopes policy and keys the audit log. Not blank.
+  optional string application = 2;
+
+  // The operation within the application: a catalog key (`GetSecretValue`)
+  // or an SDK route's name (`customer.transactions.list`). Not blank.
+  optional string operation = 3;
+  sensive.taxonomy.v1.CapabilityDescriptors capability = 4;
+
+  // The application's categories (`sensive.taxonomy.v1.Category`) — what
+  // kind of thing it is. Application-level and optional; absent reads as no
+  // categories.
+  repeated string categories = 5;
+  sensive.taxonomy.v1.UsageDescriptors usage = 6;
+  Owner owner = 7;
+
+  // The vendor's identifier of the specific resource the request touches —
+  // an ARN, a GCP resource name, a document id — when the request identifies
+  // one.
+  optional string resource_id = 8;
+
+  // JWE-encrypted justification token from a Sensive provider. Contains
+  // validated ticket information for policy evaluation. The caller
+  // forwards it unchanged from the Dynax-Justification-Token header of the
+  // request it is checking; absent when that request carried none.
+  optional string justification_token = 9;
+
+  // Whether the caller acts on the decision: the SDK's `DYNAX_MODE`. The
+  // decision is made and recorded the same either way; the access log
+  // records the mode with it. Absent reads as ENFORCED.
+  optional Mode.Value mode = 10;
+}
+
+// Response to an access check request
+message AccessCheckResponse {
+  optional AccessDecision.Value result = 1;
+
+  // Signed JWT decision token (RS256, JOSE header `typ: dynax-decision+jwt`),
+  // minted for every decision — ALLOW and DENY alike. Base64-decode the
+  // payload for the non-sensitive claims (jti, decision, application, and
+  // denialReason when denied). The `jti` also keys the decision's access-log
+  // record. A DENY token additionally carries an `enc` claim — a
+  // JWE-encrypted blob with sensitive denial context that only the Approval
+  // API can decrypt. See the DecisionTokenPayload schema for the full
+  // structure.
+  optional string decision_token = 2;
+}
+
+// Whether a caller acts on the checker's decision. An SDK whose mode is
+// DISABLED sends no check, so it has no value here.
+message Mode {
+  enum Value {
+    UNSPECIFIED = 0;
+
+    // The caller waits for the decision and acts on it.
+    ENFORCED = 1;
+
+    // The caller does not wait and lets every call through: the decision
+    // shows what the organization's policy would have done.
+    LOG_ONLY = 2;
+  }
+}
+
+// Result of an access authorization check
+message AccessDecision {
+  enum Value {
+    UNSPECIFIED = 0;
+    ALLOW = 1;
+    DENY = 2;
+  }
+}
+
+// Principal identity for access control decisions. Represents the
+// agent/employee making the request.
+message Principal {
+  // Email address of the principal, matching their IdP identity.
+  optional string email = 1;
+}
+
+// The specific subject the request identifies — the customer whose data is
+// being accessed. A runtime fact about the request, not a property of the
+// data's class; policies match it against the justification's target.
+message Owner {
+  // Customer identifier matching the backend's data ownership model.
+  optional string id = 1;
+
+  // Customer's email address.
+  optional string email = 2;
+}
+
+// Error response
+message ErrorResponse {
+  // Human-readable error message describing what went wrong
+  optional string error = 1;
+
+  // Machine-readable error code: `invalid_argument` (the request is
+  // malformed), `unauthenticated` (no credential), `permission_denied` (the
+  // credential lacks the permission), `resource_exhausted` (the request is
+  // too large), `unavailable` (the service could not answer) or `internal`
+  // (the service failed)
+  optional string code = 2;
+}

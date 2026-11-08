@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  # Build with the Go a job installs, never one the go directive would fetch.
+  GOTOOLCHAIN: local
+
+jobs:
+  # What holds for the whole repository: formatting, and the license header.
+  repository:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      # Every Go and proto file starts with the Apache-2.0 header; generated
+      # code inherits it from the protos. The gRPC module's conformance stubs
+      # are generated from a compiled descriptor set, which carries none.
+      - name: License headers
+        run: |
+          missing=0
+          for f in $(git ls-files '*.go' '*.proto' ':(exclude)grpc/internal/conformancepb'); do
+            head -n 1 "$f" | grep -qE '^// Copyright [0-9]{4} Sensive, Inc\.$' &&
+              head -n 3 "$f" | grep -q 'Licensed under the Apache License, Version 2.0' ||
+              { echo "$f: no license header"; missing=1; }
+          done
+          exit $missing
+
+  # Vet and test each module on the newest Go, and check that its generated
+  # code and go.mod are what the protos and the imports make them.
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: client
+            generate: rm -rf gen && buf generate proto
+          - module: grpc
+            generate: >-
+              rm -rf gen internal/conformancepb &&
+              buf generate proto --path proto/sensive/v1 &&
+              buf generate testdata/conformance/fixtures.binpb --template buf.gen.conformance.yaml --path conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - run: go vet ./...
+      - run: go test ./...
+      # gen/ is what the module's protos generate, with the plugins at the
+      # versions the committed code was generated with. Status, not diff, so
+      # a file generation adds or removes fails too.
+      - name: Generated code is current
+        run: |
+          go install github.com/bufbuild/buf/cmd/buf@v1.73.0
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+          ${{ matrix.generate }}
+          test -z "$(git status --porcelain)" || { git status --porcelain; git diff --stat; exit 1; }
+      - name: go.mod is tidy
+        run: go mod tidy && git diff --exit-code
+
+  # The oldest Go each module supports, the go directive in its go.mod, with
+  # the dependencies go.mod requires.
+  floors:
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [client, grpc]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.4"
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - run: go test ./...
+
+  # Every dependency at its newest release, on the newest Go, so a release
+  # that breaks the SDK shows up here before it reaches a customer.
+  latest:
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [client, grpc]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - run: go get -u ./... && go mod tidy
+      - run: go test ./...

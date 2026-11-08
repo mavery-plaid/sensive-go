@@ -1,0 +1,181 @@
+# The conformance cases: for a fixture method, the actor and the owner the
+# runtime resolved, and the access-check request it must hand its client —
+# or the error it must raise where the method is declared. The client adds
+# what the environment says, so a request here carries no environment. Every Sensive gRPC runtime's tests run every case.
+#
+# `method` is the method's full protobuf name. `expect.request` is the
+# request body in the Dynamic Access Checker's wire form, compared as JSON
+# after both sides are parsed. `expect.error` is a fragment the validation
+# error must contain. `expect.owner_field`, beside a request, is the request
+# field a runtime reads the owner's key from.
+
+- name: service application, default operation name, every descriptor, an owner
+  method: conformance.v1.Ledger.ListTransactions
+  actor: agent@example.com
+  owner: {id: cust_123}
+  expect:
+    request:
+      principal: {email: agent@example.com}
+      application: ledger
+      categories: [financial]
+      operation: conformance.v1.Ledger.ListTransactions
+      capability:
+        sources: [APPLICATION_USER]
+        semanticRoles: [CORE_CONTENT]
+        actionTypes: [LIST]
+      usage:
+        subjects: [USER]
+        sourceDetails: [USER]
+      owner: {id: cust_123}
+
+- name: operation name override, several values per set, no owner
+  method: conformance.v1.Ledger.GetBalance
+  actor: agent@example.com
+  expect:
+    request:
+      principal: {email: agent@example.com}
+      application: ledger
+      categories: [financial]
+      operation: ledger.balance.read
+      capability:
+        sources: [APPLICATION, PUBLIC]
+        semanticRoles: [CORE_CONTENT, METADATA]
+        actionTypes: [READ]
+      usage:
+        subjects: [USER, ORGANIZATION]
+
+- name: the owner's key in a request field
+  method: conformance.v1.Ledger.GetStatement
+  actor: agent@example.com
+  owner: {id: cust_123}
+  expect:
+    owner_field: account_id
+    request:
+      principal: {email: agent@example.com}
+      application: ledger
+      categories: [financial]
+      operation: conformance.v1.Ledger.GetStatement
+      capability:
+        sources: [APPLICATION_USER]
+        semanticRoles: [CORE_CONTENT]
+        actionTypes: [READ]
+      usage:
+        subjects: [USER]
+        sourceDetails: [USER]
+      owner: {id: cust_123}
+
+- name: a stream is gated at open with no owner
+  method: conformance.v1.Ledger.Tail
+  actor: agent@example.com
+  expect:
+    request:
+      principal: {email: agent@example.com}
+      application: ledger
+      categories: [financial]
+      operation: conformance.v1.Ledger.Tail
+      capability:
+        sources: [APPLICATION]
+        semanticRoles: [OPERATIONAL_DATA]
+        actionTypes: [LIST]
+      usage:
+        subjects: [SYSTEM]
+
+- name: an owner by email
+  method: conformance.v1.Ledger.ListTransactions
+  actor: agent@example.com
+  owner: {email: customer@example.com}
+  expect:
+    request:
+      principal: {email: agent@example.com}
+      application: ledger
+      categories: [financial]
+      operation: conformance.v1.Ledger.ListTransactions
+      capability:
+        sources: [APPLICATION_USER]
+        semanticRoles: [CORE_CONTENT]
+        actionTypes: [LIST]
+      usage:
+        subjects: [USER]
+        sourceDetails: [USER]
+      owner: {email: customer@example.com}
+
+- name: a service without an application takes the file's default
+  method: conformance.v1.Defaulted.Ping
+  actor: agent@example.com
+  expect:
+    request:
+      principal: {email: agent@example.com}
+      application: ledger-default
+      categories: [financial, internal-tooling]
+      operation: conformance.v1.Defaulted.Ping
+      capability:
+        sources: [PUBLIC]
+        semanticRoles: [METADATA]
+        actionTypes: [READ]
+      usage:
+        subjects: [NONE]
+
+- name: an unannotated method is not gated
+  method: conformance.v1.Ledger.Health
+  expect:
+    ungated: true
+
+- name: NONE beside another subject
+  method: conformance.v1.Malformed.NoneBesideUser
+  expect:
+    error: NONE
+
+- name: source details without the application's user as a source
+  method: conformance.v1.Malformed.DetailsWithoutUserSource
+  expect:
+    error: source_details
+
+- name: the application's user as a source without source details
+  method: conformance.v1.Malformed.UserSourceWithoutDetails
+  expect:
+    error: source_details
+
+- name: an empty capability
+  method: conformance.v1.Malformed.EmptyCapability
+  expect:
+    error: sources
+
+- name: no usage record
+  method: conformance.v1.Malformed.NoUsage
+  expect:
+    error: usage
+
+- name: no subjects, which every SDK requires a route to declare
+  method: conformance.v1.Malformed.NoSubjects
+  expect:
+    error: subjects
+
+- name: a value repeated within a set
+  method: conformance.v1.Malformed.RepeatedValue
+  expect:
+    error: repeats
+
+- name: the environment set on a method
+  method: conformance.v1.Malformed.EnvironmentOnMethod
+  expect:
+    error: environment
+
+- name: an owner declared on a stream
+  method: conformance.v1.Malformed.OwnerOnStream
+  expect:
+    error: has_owner
+
+- name: an owner field the request does not have
+  method: conformance.v1.Malformed.OwnerFieldMissing
+  expect:
+    error: owner_field
+
+- name: an owner field that is not a string
+  method: conformance.v1.Malformed.OwnerFieldNotString
+  expect:
+    error: owner_field
+
+- name: a method with no application anywhere
+  method: conformance.v1.Orphan.Ping
+  expect:
+    error: application

@@ -1,0 +1,18 @@
+# Dependabot keeps the workflows' actions and each module's dependencies
+# current. A module's go.mod requires the versions it is tested against,
+# and Go builds a customer's program with the highest version any module
+# requires, so these are the oldest versions a customer can end up with.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /client
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /grpc
+    schedule:
+      interval: weekly

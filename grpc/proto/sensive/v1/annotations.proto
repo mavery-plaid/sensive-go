@@ -1,0 +1,121 @@
+// Copyright 2026 Sensive, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// The Sensive annotations for a gRPC service: what each method does with
+// data, in the vocabulary of the data taxonomy
+// (sensive/taxonomy/v1/taxonomy.proto), declared as protobuf options on the
+// service and the method. A Sensive gRPC runtime reads them from the method
+// descriptor and builds the Dynamic Access Checker request from them.
+//
+// The model is the one every Sensive SDK shares: the application is true of
+// the whole service, the capability and usage descriptors are true of one
+// operation, and the owner is a fact about one request. Nothing is
+// inherited between methods: a method with an `operation` option states
+// everything about its data, and a method without one is not gated, as a
+// route without a `secured()` wrapper is not in the other SDKs.
+//
+// One thing is declared here and supplied in code: the owner of the data a
+// request touches, because finding it usually takes a lookup. A method
+// names the request field that holds the owner's key (`owner_field`), and
+// one lookup the application registers resolves every such method; a
+// method whose request has no single key field declares `has_owner` and
+// registers a resolver of its own. The runtime checks the declarations
+// against what is registered at startup.
+//
+// This file holds what the taxonomy does not define: the option
+// declarations and the application. The descriptor records and their
+// vocabulary are the taxonomy's own, the ones the access check carries.
+
+syntax = "proto3";
+
+package sensive.v1;
+
+import "sensive/taxonomy/v1/taxonomy.proto";
+import "google/protobuf/descriptor.proto";
+
+// The Go bindings the Go runtime ships, so a Go service's code generation
+// uses them rather than generating its own: two registrations of one file
+// panic at startup. Each language runtime names its own this way.
+option go_package = "github.com/sensive-ai/sensive-go/grpc/gen/sensive/v1;sensivev1";
+
+// What is true of the whole application: its name and its categories.
+message Application {
+  // The application's name — one spelling per application, keying the
+  // audit log and the policies (`ledger`, `yobank-support-api`).
+  string name = 1;
+
+  // The application's categories: what kind of thing it is, as lowercase
+  // dash-separated labels from the taxonomy's category vocabulary
+  // (`financial`, `identity-and-access`).
+  repeated string categories = 2;
+}
+
+// What one method does with data: the taxonomy's two descriptor records.
+// Two rules the records' grammar cannot express, which a runtime enforces
+// where the method is declared: `usage.subjects` containing NONE contains
+// nothing else, and `usage.source_details` is present exactly when
+// `capability.sources` contains APPLICATION_USER.
+message Operation {
+  // The operation's name for the audit log and the policies. Defaults to
+  // the fully qualified method name with dots
+  // (`acme.ledger.v1.Transactions.ListTransactions`).
+  string name = 1;
+
+  // What the operation does with data, true of the application whoever
+  // uses it.
+  sensive.taxonomy.v1.CapabilityDescriptors capability = 2;
+
+  // How this organization uses the operation. `subjects` is declared on
+  // every method, as every SDK requires of a route. `environment` is not
+  // set here: it is true of the deployment, and every SDK takes it from
+  // the DYNAX_ENVIRONMENT environment variable.
+  sensive.taxonomy.v1.UsageDescriptors usage = 3;
+
+  // Set when the request identifies the owner of the data it touches — the
+  // customer whose data it is — and the application resolves the owner in
+  // code: from `owner_field` when set, otherwise with a resolver registered
+  // for the method. The runtime's startup check reports a method that
+  // declares this with no way to resolve it, and a resolver registered for a
+  // method that does not.
+  bool has_owner = 4;
+
+  // The request field that holds the owner's key, a singular string field
+  // of the method's request message (`customer_id`). The runtime reads it
+  // and passes it to the owner lookup the application registers once for
+  // the whole service, so most methods need no resolver of their own.
+  // Setting it implies `has_owner`.
+  string owner_field = 5;
+}
+
+// Extension numbers 58731–58733 come from the range protobuf sets aside
+// for in-house options, 50000–99999, which needs no registration. Options
+// used outside one organization take numbers from the protobuf global
+// extension registry (protocolbuffers/protobuf, docs/options.md) instead,
+// and a published number never changes.
+extend google.protobuf.ServiceOptions {
+  // The application this service belongs to.
+  Application application = 58731;
+}
+
+extend google.protobuf.FileOptions {
+  // The application for every service in the file that does not declare
+  // its own; a service-level `application` wins.
+  Application default_application = 58732;
+}
+
+extend google.protobuf.MethodOptions {
+  // What the method does with data. A method without this option is not
+  // gated.
+  Operation operation = 58733;
+}

@@ -1,0 +1,13 @@
+# The Go bindings of the Dynamic Access Checker's API, generated into gen/
+# from the protos this module ships, proto/, and nothing else: the API as a
+# client sees it, with the taxonomy and the justification attestation it
+# imports. The files name their Go packages under this module, so nothing
+# here places them. Run as `buf generate proto`.
+version: v2
+plugins:
+  - local: protoc-gen-go
+    out: gen
+    opt: paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: gen
+    opt: paths=source_relative

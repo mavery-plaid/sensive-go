@@ -1,0 +1,255 @@
+// Copyright 2026 Sensive, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// The data taxonomy: the vocabulary access policies are written against.
+//
+// An enum is the `Value` of a message named for it, so its values are spelled
+// in JSON as they are named here. Each value's comment is its definition.
+
+syntax = "proto3";
+
+package sensive.taxonomy.v1;
+
+option go_package = "github.com/sensive-ai/sensive-go/client/gen/sensive/taxonomy/v1;taxonomyv1";
+
+// One source of the operation's data.
+message Source {
+  enum Value {
+    UNSPECIFIED = 0;
+
+    // provided by the operator of the application — API documentation, a
+    // direct retailer's product listing.
+    APPLICATION = 1;
+
+    // provided by a user of the application — chat messages, documents, a
+    // marketplace listing.
+    APPLICATION_USER = 2;
+
+    // drawn from the public domain and would exist without the application
+    // — a central bank's exchange rate, a WHOIS record.
+    PUBLIC = 3;
+  }
+}
+
+// One role the operation's data plays.
+message SemanticRole {
+  enum Value {
+    UNSPECIFIED = 0;
+
+    // the substantive payload the surface exists to handle — a message body,
+    // a document, an order, source code in a repo; a page with its own
+    // substantive content is CORE_CONTENT even when it also lists or links
+    // onward, such as a curated landing or section page.
+    CORE_CONTENT = 1;
+
+    // content secondary to the surface — reference data it consults (a
+    // message template, a lookup table), or a response that is only pointers
+    // or excerpts to other content (search results, a navigation list). The
+    // CORE/OTHER split is relative to the annotated surface, not a
+    // sensitivity judgment; a search or list inherits the role of the corpus
+    // it ranges over — one that returns the matching items themselves
+    // carries the same role as fetching one directly (searching content is
+    // CORE_CONTENT, configuration its configuration role, metadata
+    // METADATA), while one that returns only references or snippets to them
+    // carries a lighter role, typically OTHER_CONTENT or METADATA.
+    OTHER_CONTENT = 2;
+
+    // the application's own technical machinery shipped to run or render it
+    // — the JS or CSS it serves, fonts, icons, a favicon, a compiled binary;
+    // distinct from CORE_CONTENT even when the asset is the operation's
+    // payload, while a repo's own source code served as subject content
+    // stays CORE_CONTENT.
+    APPLICATION_ASSET = 3;
+
+    // describes, identifies, locates or organizes other data — a timestamp,
+    // a system-minted identifier (a user-authored name is OTHER_CONTENT).
+    METADATA = 4;
+
+    // runs, observes, secures or troubleshoots systems — logs, traces,
+    // health status.
+    OPERATIONAL_DATA = 5;
+
+    // credentials, challenges, tokens or session state exchanged to prove or
+    // end an identity — a sign-in flow, an OAuth or SAML handshake, an MFA
+    // challenge; exercising authentication, where SECURITY_CONFIGURATION is
+    // configuring it.
+    AUTHENTICATION_DATA = 6;
+
+    // governs security, identity, access or policy — a role assignment, an
+    // authentication setting; a privacy or consent setting is
+    // GENERAL_CONFIGURATION, not this.
+    SECURITY_CONFIGURATION = 7;
+
+    // other application or infrastructure configuration — a feature flag, a
+    // deployment parameter, a privacy or consent setting.
+    GENERAL_CONFIGURATION = 8;
+  }
+}
+
+// One effect of the operation, from the CRUDL taxonomy.
+message ActionType {
+  enum Value {
+    UNSPECIFIED = 0;
+
+    // brings a new object into existence — posting a comment, uploading a
+    // file, provisioning an account.
+    CREATE = 1;
+
+    // returns a specific object the request identifies — opening a document,
+    // fetching one ticket.
+    READ = 2;
+
+    // changes an existing object — editing a document, changing a role
+    // assignment.
+    UPDATE = 3;
+
+    // removes an object — deleting a file, revoking a credential, emptying a
+    // trash folder.
+    DELETE = 4;
+
+    // returns a set of objects matching criteria rather than one identified
+    // object — search results, an index page, an export.
+    LIST = 5;
+  }
+}
+
+// One category label: a broad characterization of the kind of thing an
+// application is — infrastructure, financial, communication — from which a
+// consumer can estimate the potential impact of interacting with it. A
+// string label rather than an enum: lowercase dash-separated words by
+// construction, so a label can never be mistaken for a taxonomy enum value.
+// The schema constrains the shape only; which labels are in use is
+// convention, so reuse a label already in use rather than minting a spelling
+// of your own.
+message Category {}
+
+// Who produced the data, relative to the organization using Sensive —
+// ORGANIZATION, EMPLOYEE, SYSTEM and SOFTWARE_AGENT are internal to it, USER
+// and THIRD_PARTY external.
+message SourceDetail {
+  enum Value {
+    UNSPECIFIED = 0;
+
+    // canonical artifacts published by the organization, carrying its
+    // authority rather than a particular employee's — a public-facing
+    // website, internal documentation.
+    ORGANIZATION = 1;
+
+    // an employee of the organization — CRM notes.
+    EMPLOYEE = 2;
+
+    // a system of the organization — audit logs.
+    SYSTEM = 3;
+
+    // an AI agent running in the organization — agent memory or scratchpad.
+    SOFTWARE_AGENT = 4;
+
+    // a user or customer of the organization — a support request, a
+    // transaction.
+    USER = 5;
+
+    // an entity outside the organization — a credit report, ID
+    // verification, industry news.
+    THIRD_PARTY = 6;
+  }
+}
+
+// Who the data describes — the entity it is about, not merely one it came
+// from — relative to the organization using Sensive; ORGANIZATION, EMPLOYEE,
+// SYSTEM and SOFTWARE_AGENT are internal to it, USER and THIRD_PARTY
+// external.
+message Subject {
+  enum Value {
+    UNSPECIFIED = 0;
+
+    // things internal to the organization — governance reports, onboarding
+    // documentation, financial reports, legal documents.
+    ORGANIZATION = 1;
+
+    // an employee — compensation, performance, audit logs.
+    EMPLOYEE = 2;
+
+    // a system the organization operates — a company laptop, a VM.
+    SYSTEM = 3;
+
+    // an AI agent running in the organization — agent chat logs, a system
+    // prompt.
+    SOFTWARE_AGENT = 4;
+
+    // a user or customer of the organization — fraud reviews, CRM notes,
+    // product logs.
+    USER = 5;
+
+    // an external party working with the organization — a contract, a
+    // supplier SOC2 report, a vendor security assessment.
+    THIRD_PARTY = 6;
+
+    // the data describes no particular entity — a news article, a map tile,
+    // a currency-conversion table; artifacts that describe a class rather
+    // than name instances take NONE, and NONE is exclusive: it cannot appear
+    // alongside another value.
+    NONE = 7;
+  }
+}
+
+// Whether an environment handles real data or test data.
+message Environment {
+  enum Value {
+    UNSPECIFIED = 0;
+
+    // traffic to the underlying APIs is expected to return real data —
+    // including environments whose test data was copied from production.
+    PRODUCTION_DATA = 1;
+
+    // traffic returns exclusively synthetic test data.
+    TEST_DATA = 2;
+  }
+}
+
+// An operation's capability descriptors from the data taxonomy: what the
+// data is and what the action does, true of the application whoever uses it.
+// Usage descriptors (who produced the data, who it is about, whether the
+// environment is synthetic) vary per customer and are a separate record.
+message CapabilityDescriptors {
+  // Where the operation's data comes from. Several values when the operation
+  // handles data from several sources. Absent when not known.
+  repeated Source.Value sources = 1;
+
+  // The nature of the data the operation handles. Several values when the
+  // data genuinely plays more than one role. Absent when not known.
+  repeated SemanticRole.Value semantic_roles = 2;
+
+  // The operation's effects. Usually one; several when one action genuinely
+  // produces several — a create-and-return endpoint is CREATE, READ; an
+  // upsert is CREATE, UPDATE. Absent when not known.
+  repeated ActionType.Value action_types = 3;
+}
+
+// How the organization using Sensive uses the application: the environment's
+// fidelity, who the data is about, and who produced it. These vary per
+// customer, so they are declared on the customer's own deployment rather
+// than established once for the application.
+message UsageDescriptors {
+  optional Environment.Value environment = 1;
+
+  // Who the data is about. Several values when the data describes several
+  // kinds of entity; NONE is exclusive. Absent when nothing in the customer's
+  // estate has annotated it — a fact a policy can act on — so an SDK route
+  // declares it and a connector that finds no annotation sends none.
+  repeated Subject.Value subjects = 2;
+
+  // Who produced the data — the APPLICATION_USER subcategory. Present only
+  // when the operation's sources include APPLICATION_USER.
+  repeated SourceDetail.Value source_details = 3;
+}
